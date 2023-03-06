@@ -30,8 +30,7 @@ class AnimationTextEdit(QTextEdit):
         # Pause on last line:
         if i == self.verticalScrollBar().maximum() - 1:
             self.animation.pause()
-            #QTimer.singleShot(5000, self.animation.resume)
-            QTimer.singleShot(1000, self.animation.resume)
+            QTimer.singleShot(5000, self.animation.resume)
 
     @Slot()
     def startAnimation(self):
@@ -78,8 +77,7 @@ class LineEdit(QLineEdit):
     def next_line(self):
         if len(self.text()) > 0:
             self.new_input.emit(" - " + self.text())
-            #! TO UNCOMMENT:
-            #self.clear()
+            self.clear()
 
 
 class PauseButton(QPushButton):
