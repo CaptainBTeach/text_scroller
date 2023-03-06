@@ -10,72 +10,63 @@ from PySide6.QtCore import QVariantAnimation, Slot, QTimer, Signal, QStringConve
 from PySide6.QtGui import QAction, QShortcut, QKeySequence, QFont
 import qdarktheme
 
-
-longText = "\n".join(["{}: long text - auto scrolling ".format(i) for i in range(20)])
-
-
-
-#! TBD add enough /n to fill screen, remove them to add value and 
-#! then put the \n back
-#! TBD make speed variable, depends on number of characters in a line
-#! check different screen sizes, font sizes
-
-
-
 class AnimationTextEdit(QTextEdit):
     is_paused = False
     speed = 20
+    start_signal = Signal()
 
     def __init__(self, *args, **kwargs):
         QTextEdit.__init__(self, *args, **kwargs)
         self.setReadOnly(True)
         self.animation = QVariantAnimation(self)
         self.animation.valueChanged.connect(self.moveToLine)
-        
-        self.animation.setStartValue(0)
-        
         self.animation.setLoopCount(-1)
-        self.setFont(QFont("Arial", 20))
+        self.start_signal.connect(self.startAnimation)
+        self.setFont(QFont("Arial", 30))
 
     @Slot()
     def moveToLine(self, i):
-        #print(self.animation.state().name)
-        #print(self.animation.state().value)
         self.verticalScrollBar().setValue(i)
+        # Pause on last line:
+        if i == self.verticalScrollBar().maximum() - 1:
+            self.animation.pause()
+            #QTimer.singleShot(5000, self.animation.resume)
+            QTimer.singleShot(1000, self.animation.resume)
+
+    @Slot()
+    def startAnimation(self):
+        if self.verticalScrollBar().maximum() > 4:
+            self.animation.stop()
+            self.animation.setStartValue(0)
+            self.animation.setEndValue(self.verticalScrollBar().maximum())
+            self.animation.setDuration(self.animation.endValue()*self.speed)
+            self.animation.start()
 
     @Slot()
     def add_text(self, input:str):
         print(self.document().lineCount(), self.verticalScrollBar().maximum())
-        #self.undo() # Remove all \n last appended
-        self.animation.stop()
         self.append(input) 
-        #self.append("\n\n\n\n\n\n\n\n\n\n\n\n") # Append \n for visibility
-
-        self.animation.setStartValue(0)
-        self.animation.setEndValue(self.verticalScrollBar().maximum())
-        self.animation.setDuration(self.animation.endValue()*20)
-        self.animation.start()
-
-    #@Slot()
-    #def add_text(self, input:str):
-    #    #print(self.document().lineCount(), self.verticalScrollBar().maximum())
-    #    self.append(input)
-    #    self.animation.setEndValue(self.verticalScrollBar().maximum()) 
-    #    self.animation.setDuration((self.animation.endValue() - self.verticalScrollBar().value())*self.speed)
-    #    if self.animation.state().name == "Stopped":
-    #        self.animation.setStartValue(0)
-    #        self.animation.start()
+        if self.animation.state().name == "Stopped":
+            self.start_signal.emit()
+        else: # "Running", "Paused"
+            self.animation.setEndValue(self.verticalScrollBar().maximum())
+            self.animation.setDuration(self.animation.endValue()*self.speed)
 
     @Slot()
     def pause_toggle(self, pause):
-        # if self.animation.state().name == "Paused"
-        # if self.animation.state().name == "Running"
         if pause:
             self.animation.pause()
             self.is_paused = True
         else:
             self.animation.resume()
             self.is_paused = False
+
+    @Slot()
+    def change_speed(self, value):
+        self.speed += value
+        if self.speed <= 0:
+            self.speed -= value
+        self.start_signal.emit()
 
 class LineEdit(QLineEdit):
     new_input = Signal(str)
@@ -108,13 +99,27 @@ class PauseButton(QPushButton):
             self.setText("resume scrolling")
             self.pause_sig.emit(check)
 
-class SpeedButtons(QVBoxLayout):
-    speed_delta_sig = Signal(int)
-    
+class SpeedButtons(QWidget):
+    speed_change_sig = Signal(int)
+    delta = 5
+
     def __init__(self):
         super(SpeedButtons, self).__init__()
+        self.plusbutton = QPushButton("+")
+        self.minusbutton = QPushButton("-")
+        layout = QHBoxLayout()
+        layout.addWidget(self.minusbutton)
+        layout.addWidget(self.plusbutton)
+        self.setLayout(layout)
 
-        self.layout.addWidget()
+        self.plusbutton.clicked.connect(self.emit_plus_sig)
+        self.minusbutton.clicked.connect(self.emit_minus_sig)
+
+    def emit_plus_sig(self):
+        self.speed_change_sig.emit(-self.delta)
+
+    def emit_minus_sig(self):
+        self.speed_change_sig.emit(self.delta)
 
 
 class ButtonsWidget(QWidget):
@@ -123,7 +128,11 @@ class ButtonsWidget(QWidget):
         self.layout = QVBoxLayout(self)
 
         self.pauseButton = PauseButton()
+        self.speedbtns = SpeedButtons()
+
+        self.layout.addStretch()
         self.layout.addWidget(self.pauseButton)
+        self.layout.addWidget(self.speedbtns)
 
         #self.pauseButton.pause_sig.connect()
 
@@ -137,12 +146,13 @@ class Displayer(QWidget):
         # Create objects
         self.txt = AnimationTextEdit(self)
         self.inputBox = LineEdit()
-        #!self.txt.append(longText)
         self.buttonsWidget = ButtonsWidget()
 
         # Connecting signals and slots
         self.inputBox.new_input.connect(self.txt.add_text)
         self.buttonsWidget.pauseButton.pause_sig.connect(self.txt.pause_toggle)
+        self.buttonsWidget.speedbtns.speed_change_sig.connect(self.txt.change_speed)
+
 
         # Layout
         self.layout = QHBoxLayout(self)
